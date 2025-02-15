@@ -1,0 +1,7 @@
+{
+    "num_rounds": 5,
+    "num_clients": 5,
+    "server_url": "http://127.0.0.1:5000",
+    "dirichlet_alpha": 0.5,
+    "participation_threshold": 0.5
+} 
