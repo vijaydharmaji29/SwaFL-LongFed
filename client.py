@@ -5,9 +5,13 @@ import logging
 import time
 import psutil
 import random
-import json
+import os
+from dotenv import load_dotenv
 from monitoring import ClientMonitor
 import pandas as pd
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -22,18 +26,9 @@ class FederatedClient:
         self.current_round = -1  # Initialize round number
         self.latest_accuracy_data = None  # Store latest accuracy metrics
         
-        # Load configuration
-        try:
-            with open('config.json', 'r') as f:
-                config = json.load(f)
-            self.alpha = config.get('dirichlet_alpha', 0.5)  # Default to 0.5 if not specified
-            logger.info(f"Loaded Dirichlet alpha: {self.alpha}")
-        except FileNotFoundError:
-            logger.warning("config.json not found, using default alpha: 0.5")
-            self.alpha = 0.5
-        except json.JSONDecodeError:
-            logger.error("Error parsing config.json, using default alpha: 0.5")
-            self.alpha = 0.5
+        # Load configuration from environment variables
+        self.alpha = float(os.getenv('DIRICHLET_ALPHA', 0.5))
+        logger.info(f"Loaded Dirichlet alpha: {self.alpha}")
         
         # Join the federated learning system
         response = requests.post(f'{server_url}/join')
@@ -209,6 +204,9 @@ class FederatedClient:
         return [g.numpy() for g in gradients]
 
     def participate_in_round(self, x_train=None, y_train=None, round_number=0):
+        # Start monitoring for this round regardless of participation
+        self.monitor.start_monitoring()
+        start_time = time.time()
 
         # Store current training data for label distribution analysis
         self.current_training_data = (x_train, y_train)
@@ -218,11 +216,10 @@ class FederatedClient:
         self.current_training_sample = (x_sample, y_sample)
         logger.info(f"Client {self.client_id} sampled {len(x_sample)} data points for round {round_number}")
         
-
         # Check participation
         if round_number == 1:
             should_participate = True
-            print("Round 1 Partipcation")
+            print("Round 1 Participation")
         else:
             should_participate = self.check_participation()
             print(f"Client {self.client_id} should participate: {should_participate}")
@@ -230,13 +227,17 @@ class FederatedClient:
         if not should_participate:
             logger.info(f"Client {self.client_id} chose not to participate in round {round_number}")
             
-            # Log non-participation
+            # Stop monitoring and get averages even when not participating
+            training_time = time.time() - start_time
+            avg_cpu, avg_memory = self.monitor.stop_monitoring()
+            
+            # Log metrics for non-participation
             self.monitor.log_metrics(
                 round_number=round_number,
-                training_time=0,
+                training_time=training_time,
                 accuracy=0,
-                cpu_percent=0,
-                memory_percent=0,
+                cpu_percent=avg_cpu,
+                memory_percent=avg_memory,
                 participated=False
             )
             
@@ -262,8 +263,7 @@ class FederatedClient:
             accuracy=accuracy,
             cpu_percent=avg_cpu,
             memory_percent=avg_memory,
-            participated=True,  # Training means participated
-            
+            participated=True
         )
         
         # Submit updated model and gradients

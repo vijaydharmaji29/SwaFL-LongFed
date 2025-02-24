@@ -1,9 +1,14 @@
 import numpy as np
 from client import FederatedClient
 import tensorflow as tf
-import json
 import threading
 import logging
+import os
+from dotenv import load_dotenv
+from utils.email_sender import send_logs_email
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -26,26 +31,11 @@ class ClientThread(threading.Thread):
             self.client.participate_in_round(self.client_x, self.client_y, round_num + 1)
             logger.info(f"Client {self.client.client_id} completed round {round_num + 1}")
 
-# Load configuration
-def load_config():
-    try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            return (
-                config.get('num_rounds', 5),
-                config.get('num_clients', 3),
-                config.get('server_url', 'http://localhost:5000')
-            )
-    except FileNotFoundError:
-        print("Config file not found, using default values")
-        return 5, 3, "http://localhost:5000"
-    except json.JSONDecodeError:
-        print("Invalid JSON in config file, using default values")
-        return 5, 3, "http://localhost:5000"
-
 def main():
-    # Load config values
-    num_rounds, num_clients, SERVER_URL = load_config()
+    # Load config values from environment variables
+    num_rounds = int(os.getenv('NUM_ROUNDS', 5))
+    num_clients = int(os.getenv('NUM_CLIENTS', 3))
+    server_url = os.getenv('SERVER_URL', 'http://localhost:5000')
 
     # Load and preprocess CIFAR-10 data
     (x_train, y_train), _ = tf.keras.datasets.cifar10.load_data()
@@ -57,7 +47,7 @@ def main():
 
     # Create and initialize clients
     for i in range(num_clients):
-        client = FederatedClient(SERVER_URL)
+        client = FederatedClient(server_url)
         start_idx = i * data_per_client
         end_idx = (i + 1) * data_per_client
         
@@ -79,6 +69,13 @@ def main():
         thread.join()
 
     logger.info("All clients have completed training")
+
+    # Send logs via email
+    logger.info("Attempting to send training logs via email...")
+    if send_logs_email():
+        logger.info("Training logs sent successfully via email")
+    else:
+        logger.error("Failed to send training logs via email")
 
 if __name__ == "__main__":
     main() 
