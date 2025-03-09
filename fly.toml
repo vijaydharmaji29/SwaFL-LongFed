@@ -1,0 +1,42 @@
+# fly.toml app configuration file generated for longfed-client-1 on 2025-02-25T19:39:16+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'longfed-client-1'
+primary_region = 'bom'
+
+[build]
+  image = 'devsnollygloster/longfed-client:latest'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '4gb'
+  cpu_kind = 'shared'
+  cpus = 8
+
+[env]
+  NUM_ROUNDS=30
+  PARTICIPATION_THRESHOLD=0.5
+  NUM_CLIENTS=1
+  SERVER_URL='https://longfed-server.fly.dev'
+  DIRICHLET_ALPHA=0.5
+  EMAIL_SENDER='vegetable791@gmail.com'
+  EMAIL_PASSWORD='wihs phsg zduq iawi'
+  EMAIL_RECIPIENT='vegetable791@gmail.com'
+  SMTP_SERVER='smtp.gmail.com'
+  SMTP_PORT=587
+  APP_NAME='Longfed Client 1'
+  
+
+[[restart]]
+  policy = 'never'
+  retries = 10
+  processes = ['app'] 

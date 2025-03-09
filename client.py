@@ -51,14 +51,7 @@ class FederatedClient:
             logger.error(f"Failed to join. Status code: {response.status_code}")
             raise Exception("Failed to join federated learning system")
 
-    def create_model(self):
-        # Pin TensorFlow to a single CPU core
-        import tensorflow as tf
-        physical_devices = tf.config.list_physical_devices('CPU')
-        tf.config.set_visible_devices(physical_devices[0], 'CPU')
-        tf.config.threading.set_intra_op_parallelism_threads(1)
-        tf.config.threading.set_inter_op_parallelism_threads(1)
-        
+    def create_model(self):        
         model = tf.keras.Sequential([
             tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)),
             tf.keras.layers.MaxPooling2D((2, 2)),
@@ -78,10 +71,11 @@ class FederatedClient:
         self.monitor.start_monitoring()
         start_time = time.time()
         
-        # Train the model
+        # Train the model with batch size
         history = self.model.fit(
             x_train, y_train,
             epochs=epochs,
+            batch_size=2,  # Add batch_size parameter
             validation_split=0.2,
             verbose=0
         )
@@ -197,11 +191,30 @@ class FederatedClient:
 
     def compute_gradients(self, x_sample, y_sample):
         """Compute gradients of the model with respect to the sample data."""
-        with tf.GradientTape() as tape:
-            predictions = self.model(x_sample, training=True)
-            loss = self.model.compiled_loss(y_sample, predictions)
-        gradients = tape.gradient(loss, self.model.trainable_variables)
-        return [g.numpy() for g in gradients]
+        # Process in batches to avoid memory issues
+        batch_size = 2
+        num_samples = len(x_sample)
+        gradients = None
+        
+        for i in range(0, num_samples, batch_size):
+            batch_x = x_sample[i:i + batch_size]
+            batch_y = y_sample[i:i + batch_size]
+            
+            with tf.GradientTape() as tape:
+                predictions = self.model(batch_x)
+                loss = self.model.compiled_loss(batch_y, predictions)
+            
+            batch_gradients = tape.gradient(loss, self.model.trainable_variables)
+            
+            if gradients is None:
+                gradients = [g.numpy() for g in batch_gradients]
+            else:
+                # Average the gradients
+                gradients = [g + bg.numpy() for g, bg in zip(gradients, batch_gradients)]
+        
+        # Compute the mean of gradients
+        gradients = [g / (num_samples / batch_size) for g in gradients]
+        return gradients
 
     def participate_in_round(self, x_train=None, y_train=None, round_number=0):
         # Start monitoring for this round regardless of participation
@@ -248,39 +261,38 @@ class FederatedClient:
                     'participating': False
                 }
             )
-            return False
+        else:
+            # Train local model with monitoring using sampled data
+            history, training_time, accuracy, avg_cpu, avg_memory = self.train_local_model(x_sample, y_sample, round_number)
 
-        # Train local model with monitoring using sampled data
-        history, training_time, accuracy, avg_cpu, avg_memory = self.train_local_model(x_sample, y_sample, round_number)
+            # Compute gradients
+            gradients = self.compute_gradients(x_sample, y_sample)
 
-        # Compute gradients
-        gradients = self.compute_gradients(x_sample, y_sample)
-
-        # Log metrics with all information
-        self.monitor.log_metrics(
-            round_number=round_number,
-            training_time=training_time,
-            accuracy=accuracy,
-            cpu_percent=avg_cpu,
-            memory_percent=avg_memory,
-            participated=True
-        )
-        
-        # Submit updated model and gradients
-        logger.info(f"Client {self.client_id} submitting updated model for round {round_number}")
-        response = requests.post(
-            f'{self.server_url}/submit',
-            json={
-                'client_id': self.client_id,
-                'participating': True,
-                'weights': [w.tolist() for w in self.model.get_weights()],
-                'gradients': [g.tolist() for g in gradients]
-            }
-        )
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to submit model. Status: {response.status_code}")
-            return False
+            # Log metrics with all information
+            self.monitor.log_metrics(
+                round_number=round_number,
+                training_time=training_time,
+                accuracy=accuracy,
+                cpu_percent=avg_cpu,
+                memory_percent=avg_memory,
+                participated=True
+            )
+            
+            # Submit updated model and gradients
+            logger.info(f"Client {self.client_id} submitting updated model for round {round_number}")
+            response = requests.post(
+                f'{self.server_url}/submit',
+                json={
+                    'client_id': self.client_id,
+                    'participating': True,
+                    'weights': [w.tolist() for w in self.model.get_weights()],
+                    'gradients': [g.tolist() for g in gradients]
+                }
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to submit model. Status: {response.status_code}")
+                return False
 
         # Poll until we get a new model for next round
         logger.info(f"Client {self.client_id} starting to poll for aggregated model after round {self.current_round}")
@@ -298,6 +310,7 @@ class FederatedClient:
             )
 
             print("Polling with: ", self.current_round)
+            print(response.status_code)
             
             if response.status_code == 200:
                 data = response.json()

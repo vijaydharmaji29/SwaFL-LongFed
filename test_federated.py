@@ -6,6 +6,8 @@ import logging
 import os
 from dotenv import load_dotenv
 from utils.email_sender import send_logs_email
+import gc
+
 
 # Load environment variables
 load_dotenv()
@@ -30,6 +32,15 @@ class ClientThread(threading.Thread):
             logger.info(f"Client {self.client.client_id} starting round {round_num + 1}")
             self.client.participate_in_round(self.client_x, self.client_y, round_num + 1)
             logger.info(f"Client {self.client.client_id} completed round {round_num + 1}")
+            gc.collect()
+
+            if round_num == self.num_rounds - 5:
+                # Send logs via email
+                logger.info("Attempting to send training logs via email...")
+                if send_logs_email():
+                    logger.info("Training logs sent successfully via email")
+                else:
+                    logger.error("Failed to send training logs via email")
 
 def main():
     # Load config values from environment variables
@@ -69,13 +80,6 @@ def main():
         thread.join()
 
     logger.info("All clients have completed training")
-
-    # Send logs via email
-    logger.info("Attempting to send training logs via email...")
-    if send_logs_email():
-        logger.info("Training logs sent successfully via email")
-    else:
-        logger.error("Failed to send training logs via email")
 
 if __name__ == "__main__":
     main() 
