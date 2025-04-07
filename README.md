@@ -1,5 +1,7 @@
 # Federated Learning System Documentation
 
+NOTE: This repo is the for the code for LongFed - a framework for client selection in FL clusters. This is for benchmarking 'SwaFL' - a novel client selection framework for heterogenous, low-resourced FL clusters.
+
 ## Table of Contents
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
@@ -14,7 +16,7 @@
 This federated learning system implements a distributed machine learning framework where multiple clients collaborate to train a global model while keeping their data private. The system uses a CNN model for image classification on the CIFAR-10 dataset.
 
 ### Key Features
-- Selective client participation based on system and data metrics
+- Selective client participation based on LongFed.
 - Resource monitoring and performance tracking
 - Adaptive sampling using Dirichlet distribution
 - Comprehensive metrics logging
@@ -58,12 +60,6 @@ Features:
 - Ensures balanced class representation
 - Handles random data selection
 
-#### Participation Logic
-Implements:
-- System score calculation using linear regression
-- Historical performance analysis
-- Resource-aware decision making
-
 ### 2. Monitoring Component (`monitoring.py`)
 Features:
 - Real-time CPU and memory monitoring
@@ -72,17 +68,11 @@ Features:
 - Comprehensive metric collection
 
 #### Metrics Tracked:
-1. System Metrics:
+System Metrics:
    - CPU utilization
    - Memory usage
    - Training time
    - Model accuracy
-
-2. Participation Metrics:
-   - Data score
-   - System score
-   - Overall score
-   - Participation threshold
 
 ## Configuration
 
@@ -90,28 +80,11 @@ Features:
 
 Parameters:
 - `dirichlet_alpha`: Controls data distribution skewness
-- `participation_threshold`: Minimum score for participation
+- `participation_threshold`: Percentage of clients that should participate
 - `min_clients`: Minimum required participating clients
 - `rounds`: Total training rounds
 
 ## Detailed Component Documentation
-
-### Participation Decision System
-The system uses a sophisticated decision-making process:
-
-1. First Round Participation:
-   - All clients participate in round 0
-   - Establishes baseline metrics
-
-2. Subsequent Rounds:
-   - System Score: Based on resource usage and training time
-   - Data Score: Uses Bhattacharyya distance for distribution comparison
-   - Overall Score: Weighted combination of scores
-
-3. Linear Regression for Time Prediction:
-   - Uses historical data after 10 rounds
-   - Predicts training time based on system metrics
-   - Adapts to changing system conditions
 
 ### Data Distribution System
 Implements sophisticated data sampling:
@@ -164,10 +137,6 @@ client.start_client()
         ```python
         python test_federated.py
         ```
-
-
-### Monitoring Metrics
-
 
 ## Performance Considerations
 
